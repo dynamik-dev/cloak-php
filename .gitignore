@@ -1,0 +1,4 @@
+.claude
+.phpstan-cache
+/vendor
+CLAUDE.md

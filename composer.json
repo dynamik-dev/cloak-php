@@ -1,0 +1,33 @@
+{
+    "name": "dynamikdev/cloak-php",
+    "description": "Redact sensitive data from strings and reveal them later using placeholder tokens",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "DynamikDev\\Cloak\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "DynamikDev\\Cloak\\Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": "^8.2",
+        "giggsey/libphonenumber-for-php": "^9.0"
+    },
+    "require-dev": {
+        "pestphp/pest": "^3.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "analyse": "phpstan analyse"
+    }
+}
