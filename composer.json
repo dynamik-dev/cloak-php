@@ -1,5 +1,5 @@
 {
-    "name": "dynamikdev/cloak-php",
+    "name": "dynamik-dev/cloak-php",
     "description": "Redact sensitive data from strings and reveal them later using placeholder tokens",
     "type": "library",
     "license": "MIT",
