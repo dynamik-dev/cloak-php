@@ -6,7 +6,10 @@
     "autoload": {
         "psr-4": {
             "DynamikDev\\Cloak\\": "src/"
-        }
+        },
+        "files": [
+            "src/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
