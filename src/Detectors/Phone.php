@@ -35,7 +35,6 @@ class Phone implements DetectorInterface
         $results = [];
 
         try {
-            // Use PhoneNumberMatcher to find all phone numbers in text
             $matcher = $this->phoneUtil->findNumbers($text, $this->defaultRegion);
 
             foreach ($matcher as $match) {
@@ -47,7 +46,6 @@ class Phone implements DetectorInterface
                 }
             }
         } catch (NumberParseException $e) {
-            // If parsing fails, return empty array
             return [];
         }
 

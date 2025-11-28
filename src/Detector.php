@@ -100,9 +100,7 @@ class Detector
                 $lowerText = strtolower($text);
 
                 foreach ($this->words as $word) {
-                    $lowerWord = strtolower($word);
-                    $pos = strpos($lowerText, $lowerWord);
-                    if ($pos !== false) {
+                    if (($pos = strpos($lowerText, strtolower($word))) !== false) {
                         $matches[] = [
                             'match' => substr($text, $pos, strlen($word)),
                             'type' => $this->type,
