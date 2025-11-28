@@ -19,7 +19,8 @@
     },
     "require-dev": {
         "pestphp/pest": "^3.0",
-        "phpstan/phpstan": "^2.0"
+        "phpstan/phpstan": "^2.0",
+        "laravel/pint": "^1.26"
     },
     "config": {
         "allow-plugins": {
@@ -28,6 +29,13 @@
     },
     "scripts": {
         "test": "pest",
-        "analyse": "phpstan analyse"
+        "analyse": "phpstan analyse",
+        "format": "./vendor/bin/pint",
+        "format:test": "./vendor/bin/pint --test",
+        "ci:test": [
+            "@format:check",
+            "@analyse",
+            "@test"
+        ]
     }
 }

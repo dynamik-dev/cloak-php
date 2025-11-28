@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace DynamikDev\Cloak;
 
+use DynamikDev\Cloak\Concerns\HasLifecycleCallbacks;
 use DynamikDev\Cloak\Contracts\DetectorInterface;
+use DynamikDev\Cloak\Contracts\EncryptorInterface;
 use DynamikDev\Cloak\Contracts\StoreInterface;
+use DynamikDev\Cloak\Encryptors\NullEncryptor;
+use DynamikDev\Cloak\Encryptors\OpenSslEncryptor;
 use DynamikDev\Cloak\Stores\ArrayStore;
 
 /**
@@ -13,11 +17,26 @@ use DynamikDev\Cloak\Stores\ArrayStore;
  */
 class Cloak
 {
+    use HasLifecycleCallbacks;
+
     protected const PLACEHOLDER_PATTERN = '/\{\{([A-Z_]+)_([a-zA-Z0-9]{6})_(\d+)\}\}/';
     protected const KEY_LENGTH = 6;
     protected const KEY_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
     protected static ?StoreInterface $defaultStore = null;
+
+    /** @var array<int, DetectorInterface>|null */
+    protected ?array $defaultDetectors = null;
+
+    protected int $ttl = 3600;
+
+    /** @var array<int, callable(array{match: string, type: string}): bool> */
+    protected array $filters = [];
+
+    protected ?EncryptorInterface $encryptor = null;
+
+    /** @var callable|null */
+    protected $encryptorCallback = null;
 
     protected function __construct(
         protected readonly StoreInterface $store
@@ -44,60 +63,134 @@ class Cloak
     }
 
     /**
+     * Set the default detectors to use when none are specified.
+     *
+     * @param array<int, DetectorInterface> $detectors
+     * @return $this
+     */
+    public function withDetectors(array $detectors): self
+    {
+        $this->defaultDetectors = $detectors;
+
+        return $this;
+    }
+
+    /**
+     * Set the TTL (time to live) for stored mappings in seconds.
+     *
+     * @param int $ttl Time to live in seconds
+     * @return $this
+     */
+    public function withTtl(int $ttl): self
+    {
+        $this->ttl = $ttl;
+
+        return $this;
+    }
+
+    /**
+     * Add a filter to exclude certain detections.
+     * Multiple filters can be added - all must return true for a detection to be included.
+     *
+     * @param callable(array{match: string, type: string}): bool $callback Return false to exclude the detection
+     * @return $this
+     */
+    public function filter(callable $callback): self
+    {
+        $this->filters[] = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Enable encryption using the default OpenSslEncryptor.
+     * If no key is provided, it will attempt to read from CLOAK_PRIVATE_KEY environment variable.
+     *
+     * @param string|null $key The encryption key (32 bytes raw or base64-encoded)
+     * @return $this
+     * @throws \RuntimeException If the key is invalid or not found
+     */
+    public function encrypt(?string $key = null): self
+    {
+        $this->encryptor = new OpenSslEncryptor($key);
+        $this->encryptorCallback = null;
+
+        return $this;
+    }
+
+    /**
+     * Set a custom encryptor instance or callback.
+     *
+     * @param EncryptorInterface|callable(): EncryptorInterface $encryptor
+     * @return $this
+     */
+    public function encryptUsing(EncryptorInterface|callable $encryptor): self
+    {
+        if (is_callable($encryptor)) {
+            $this->encryptorCallback = $encryptor;
+            $this->encryptor = null;
+        } else {
+            $this->encryptor = $encryptor;
+            $this->encryptorCallback = null;
+        }
+
+        return $this;
+    }
+
+    /**
      * @param array<int, DetectorInterface>|null $detectors
      */
     public function cloak(string $text, ?array $detectors = null): string
     {
-        $detectors ??= Detector::all();
+        $processedText = $this->executeBeforeCloakCallbacks($text);
 
-        // Collect all detections
-        $detections = $this->runDetectors($text, $detectors);
+        $detections = $this->applyFilters(
+            $this->runDetectors($processedText, $detectors ?? $this->defaultDetectors ?? Detector::all())
+        );
 
         if ($detections === []) {
-            return $text;
+            $this->executeAfterCloakCallbacks($text, $processedText);
+
+            return $processedText;
         }
 
-        // Generate unique key for this cloak operation
         $key = $this->generateKey();
-
-        // Build placeholder map
         $map = $this->buildPlaceholderMap($detections, $key);
 
-        // Store the mapping
-        $this->store->put('cloak:' . $key, $map);
+        $this->store->put('cloak:' . $key, $this->encryptMap($map), $this->ttl);
 
-        // Replace original values with placeholders
-        return $this->replaceWithPlaceholders($text, $map);
+        $result = $this->replaceWithPlaceholders($processedText, $map);
+
+        $this->executeAfterCloakCallbacks($text, $result);
+
+        return $result;
     }
 
     public function uncloak(string $text): string
     {
-        // Find all placeholders in the text
+        $text = $this->executeBeforeUncloakCallbacks($text);
+
         preg_match_all(self::PLACEHOLDER_PATTERN, $text, $matches, PREG_SET_ORDER);
 
         if ($matches === []) {
             return $text;
         }
 
-        // Group placeholders by key
-        $keyGroups = $this->groupPlaceholdersByKey($matches);
+        foreach ($this->groupPlaceholdersByKey($matches) as $key => $placeholders) {
+            $encryptedMap = $this->store->get('cloak:' . $key);
 
-        // Fetch mappings and replace
-        foreach ($keyGroups as $key => $placeholders) {
-            $map = $this->store->get('cloak:' . $key);
-
-            if ($map === null) {
+            if ($encryptedMap === null) {
                 continue;
             }
 
-            foreach ($placeholders as $placeholder) {
-                if (isset($map[$placeholder])) {
-                    $text = str_replace($placeholder, $map[$placeholder], $text);
+            foreach ($this->decryptMap($encryptedMap) as $placeholder => $value) {
+                if (in_array($placeholder, $placeholders, true)) {
+                    $text = str_replace($placeholder, $value, $text);
                 }
             }
         }
 
-        return $text;
+        return $this->executeAfterUncloakCallbacks($text);
     }
 
     /**
@@ -109,13 +202,32 @@ class Cloak
         $detections = [];
 
         foreach ($detectors as $detector) {
-            $results = $detector->detect($text);
-            foreach ($results as $result) {
+            foreach ($detector->detect($text) as $result) {
                 $detections[] = $result;
             }
         }
 
         return $detections;
+    }
+
+    /**
+     * Apply all registered filters to the detections.
+     * All filters must return true for a detection to be included.
+     *
+     * @param array<int, array{match: string, type: string}> $detections
+     * @return array<int, array{match: string, type: string}>
+     */
+    protected function applyFilters(array $detections): array
+    {
+        if ($this->filters === []) {
+            return $detections;
+        }
+
+        foreach ($this->filters as $filter) {
+            $detections = array_filter($detections, $filter);
+        }
+
+        return array_values($detections);
     }
 
     protected function generateKey(): string
@@ -143,15 +255,12 @@ class Cloak
         $valueToPlaceholder = [];
 
         foreach ($detections as $detection) {
-            $match = $detection['match'];
-            $type = strtoupper($detection['type']);
-
-            // Reuse placeholder for same value
-            if (isset($valueToPlaceholder[$match])) {
+            if (isset($valueToPlaceholder[$detection['match']])) {
                 continue;
             }
 
-            // Initialize counter for this type
+            $type = strtoupper($detection['type']);
+
             if (!isset($typeCounters[$type])) {
                 $typeCounters[$type] = 0;
             }
@@ -159,8 +268,8 @@ class Cloak
             $typeCounters[$type]++;
             $placeholder = '{{' . $type . '_' . $key . '_' . $typeCounters[$type] . '}}';
 
-            $map[$placeholder] = $match;
-            $valueToPlaceholder[$match] = $placeholder;
+            $map[$placeholder] = $detection['match'];
+            $valueToPlaceholder[$detection['match']] = $placeholder;
         }
 
         return $map;
@@ -187,16 +296,62 @@ class Cloak
         $groups = [];
 
         foreach ($matches as $match) {
-            $placeholder = $match[0];
-            $key = $match[2];
-
-            if (!isset($groups[$key])) {
-                $groups[$key] = [];
+            if (!isset($groups[$match[2]])) {
+                $groups[$match[2]] = [];
             }
 
-            $groups[$key][] = $placeholder;
+            $groups[$match[2]][] = $match[0];
         }
 
         return $groups;
+    }
+
+    /**
+     * Get the encryptor instance, initializing from callback if needed.
+     */
+    protected function getEncryptor(): EncryptorInterface
+    {
+        if ($this->encryptorCallback !== null && $this->encryptor === null) {
+            $result = ($this->encryptorCallback)();
+            assert($result instanceof EncryptorInterface);
+            $this->encryptor = $result;
+            $this->encryptorCallback = null;
+        }
+
+        return $this->encryptor ?? new NullEncryptor();
+    }
+
+    /**
+     * Encrypt the values in the placeholder map.
+     *
+     * @param array<string, string> $map
+     * @return array<string, string>
+     */
+    protected function encryptMap(array $map): array
+    {
+        $encrypted = [];
+
+        foreach ($map as $placeholder => $value) {
+            $encrypted[$placeholder] = $this->getEncryptor()->encrypt($value);
+        }
+
+        return $encrypted;
+    }
+
+    /**
+     * Decrypt the values in the placeholder map.
+     *
+     * @param array<string, string> $map
+     * @return array<string, string>
+     */
+    protected function decryptMap(array $map): array
+    {
+        $decrypted = [];
+
+        foreach ($map as $placeholder => $value) {
+            $decrypted[$placeholder] = $this->getEncryptor()->decrypt($value);
+        }
+
+        return $decrypted;
     }
 }
