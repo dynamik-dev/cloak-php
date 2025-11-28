@@ -160,3 +160,51 @@ it('handles credit card with underscored type', function () {
 
     expect($result)->toMatch('/Card: \{\{CREDIT_CARD_[a-zA-Z0-9]{6}_1\}\}/');
 });
+
+it('uses custom resolver when set', function () {
+    $customStore = new ArrayStore();
+    $customCloak = Cloak::using($customStore);
+
+    Cloak::resolveUsing(fn() => $customCloak);
+
+    $resolved = Cloak::make();
+
+    expect($resolved)->toBe($customCloak);
+
+    Cloak::clearResolver();
+});
+
+it('resolver is called on every make() call', function () {
+    $callCount = 0;
+
+    Cloak::resolveUsing(function () use (&$callCount) {
+        $callCount++;
+        return Cloak::using(new ArrayStore());
+    });
+
+    Cloak::make();
+    Cloak::make();
+    Cloak::make();
+
+    expect($callCount)->toBe(3);
+
+    Cloak::clearResolver();
+});
+
+it('clearResolver reverts to default behavior', function () {
+    $customStore = new ArrayStore();
+    Cloak::resolveUsing(fn() => Cloak::using($customStore));
+
+    Cloak::clearResolver();
+
+    $resolved = Cloak::make();
+
+    expect($resolved)->toBeInstanceOf(Cloak::class);
+    expect($resolved)->not->toBe(Cloak::using($customStore));
+});
+
+it('make uses default store when no resolver set', function () {
+    $cloak = Cloak::make();
+
+    expect($cloak)->toBeInstanceOf(Cloak::class);
+});

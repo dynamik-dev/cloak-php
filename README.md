@@ -386,6 +386,65 @@ class LaravelCacheStore implements StoreInterface
 }
 ```
 
+## Framework Integration
+
+### Custom Resolver
+
+For framework adapters (like Laravel, Symfony, etc.), you can override how `Cloak::make()` resolves instances using `resolveUsing()`:
+
+```php
+use DynamikDev\Cloak\Cloak;
+
+// Set a custom resolver (typically in a service provider)
+Cloak::resolveUsing(fn() => app(Cloak::class));
+
+// Now Cloak::make() resolves from your container
+$cloak = Cloak::make();  // Uses your container binding
+```
+
+This allows framework packages to:
+- Integrate with dependency injection containers
+- Use framework-specific storage drivers
+- Apply framework configuration automatically
+- Let developers extend and customize via container bindings
+
+**Example Laravel Service Provider:**
+
+```php
+use DynamikDev\Cloak\Cloak;
+use Illuminate\Support\ServiceProvider;
+
+class CloakServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind Cloak to the container with your configuration
+        $this->app->bind(Cloak::class, function ($app) {
+            return Cloak::using($app->make(CacheStore::class))
+                ->withDetectors(config('cloak.detectors', Detector::all()));
+        });
+
+        // Make helpers use container resolution
+        Cloak::resolveUsing(fn() => app(Cloak::class));
+    }
+}
+```
+
+Now developers can customize behavior through container bindings:
+
+```php
+// In AppServiceProvider
+$this->app->bind(Cloak::class, function ($app) {
+    return CustomCloak::using($app->make(CacheStore::class));
+});
+```
+
+**Clearing the Resolver:**
+
+```php
+Cloak::clearResolver();  // Reverts to default behavior
+```
+
 ## Extending Cloak
 
 Cloak follows a compositional architecture, making it easy to extend with custom implementations.

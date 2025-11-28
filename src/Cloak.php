@@ -22,6 +22,9 @@ class Cloak
     use HasLifecycleCallbacks;
     use ManagesStorage;
 
+    /** @var (callable(): self)|null */
+    protected static $resolver = null;
+
     /** @var array<int, DetectorInterface>|null */
     protected ?array $defaultDetectors = null;
 
@@ -42,7 +45,30 @@ class Cloak
 
     public static function make(?StoreInterface $store = null): self
     {
+        if (self::$resolver !== null) {
+            return (self::$resolver)();
+        }
+
         return new self($store ?? self::getDefaultStore());
+    }
+
+    /**
+     * Set a custom resolver for creating Cloak instances.
+     * This allows framework adapters to override the default factory behavior.
+     *
+     * @param callable(): self $resolver
+     */
+    public static function resolveUsing(callable $resolver): void
+    {
+        self::$resolver = $resolver;
+    }
+
+    /**
+     * Clear the custom resolver, reverting to default factory behavior.
+     */
+    public static function clearResolver(): void
+    {
+        self::$resolver = null;
     }
 
     /**
