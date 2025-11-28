@@ -19,7 +19,7 @@ class ArrayStore implements StoreInterface
     /**
      * @param array<string, string> $map
      */
-    public function put(string $key, array $map, int $ttl = 3600): void
+    public function put(string $key, array $map): void
     {
         $this->data[$key] = $map;
     }

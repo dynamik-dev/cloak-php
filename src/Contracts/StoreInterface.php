@@ -11,9 +11,8 @@ interface StoreInterface
      *
      * @param string $key The unique storage key
      * @param array<string, string> $map Placeholder to original value mapping
-     * @param int $ttl Time to live in seconds
      */
-    public function put(string $key, array $map, int $ttl = 3600): void;
+    public function put(string $key, array $map): void;
 
     /**
      * Retrieve a mapping by key.

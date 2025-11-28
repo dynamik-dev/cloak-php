@@ -68,7 +68,7 @@ use DynamikDev\Cloak\Encryptors\OpenSslEncryptor;
 $cloak = Cloak::make()
     ->withDetectors([Detector::email()])
     ->withTtl(7200)
-    ->withEncryptor(new OpenSslEncryptor(OpenSslEncryptor::generateKey()));
+    ->encrypt(OpenSslEncryptor::generateKey());
 
 $cloaked = $cloak->cloak('Sensitive: john@example.com');
 ```
@@ -116,16 +116,21 @@ Detector::phone('US')->detect('Order #123456789012'); // Not detected
 
 ## Custom Detectors
 
-Create custom detectors using three convenient methods:
+Cloak supports two approaches for custom detectors: **factory methods** (concise) and **direct instantiation** (explicit).
 
 ### Pattern-based Detector
 
 ```php
 use DynamikDev\Cloak\Detector;
+use DynamikDev\Cloak\Detectors\Pattern;
 
-$passportDetector = Detector::pattern('/\b[A-Z]{2}\d{6}\b/', 'passport');
+// Factory method (concise)
+$detector = Detector::pattern('/\b[A-Z]{2}\d{6}\b/', 'passport');
 
-$cloaked = $cloak->cloak('Passport: AB123456', [$passportDetector]);
+// Direct instantiation (explicit)
+$detector = new Pattern('/\b[A-Z]{2}\d{6}\b/', 'passport');
+
+$cloaked = $cloak->cloak('Passport: AB123456', [$detector]);
 // "Passport: {{PASSPORT_x7k2m9_1}}"
 ```
 
@@ -133,10 +138,15 @@ $cloaked = $cloak->cloak('Passport: AB123456', [$passportDetector]);
 
 ```php
 use DynamikDev\Cloak\Detector;
+use DynamikDev\Cloak\Detectors\Words;
 
-$sensitiveDetector = Detector::words(['password', 'secret'], 'sensitive');
+// Factory method
+$detector = Detector::words(['password', 'secret'], 'sensitive');
 
-$cloaked = $cloak->cloak('The password is secret123', [$sensitiveDetector]);
+// Direct instantiation
+$detector = new Words(['password', 'secret'], 'sensitive');
+
+$cloaked = $cloak->cloak('The password is secret123', [$detector]);
 // "The {{SENSITIVE_x7k2m9_1}} is {{SENSITIVE_x7k2m9_2}}123"
 ```
 
@@ -144,8 +154,10 @@ $cloaked = $cloak->cloak('The password is secret123', [$sensitiveDetector]);
 
 ```php
 use DynamikDev\Cloak\Detector;
+use DynamikDev\Cloak\Detectors\Callback;
 
-$apiKeyDetector = Detector::using(function (string $text): array {
+// Factory method
+$detector = Detector::using(function (string $text): array {
     $matches = [];
     if (preg_match_all('/\bAPI_KEY_\w+\b/', $text, $found)) {
         foreach ($found[0] as $match) {
@@ -154,6 +166,27 @@ $apiKeyDetector = Detector::using(function (string $text): array {
     }
     return $matches;
 });
+
+// Direct instantiation
+$detector = new Callback(function (string $text): array {
+    // ... same logic
+});
+```
+
+### Mixed Approach
+
+You can mix both patterns freely:
+
+```php
+use DynamikDev\Cloak\Detector;
+use DynamikDev\Cloak\Detectors\{Email, Pattern, Words};
+
+$cloak->cloak($text, [
+    new Email(),                                    // Direct
+    Detector::phone('US'),                          // Factory
+    new Pattern('/\b[A-Z]{2}\d{6}\b/', 'passport'), // Direct
+    Detector::words(['secret'], 'sensitive'),       // Factory
+]);
 ```
 
 ### Implementing DetectorInterface
@@ -236,16 +269,13 @@ $cloak = Cloak::make()
 
 ### Encryption
 
-Encrypt sensitive values at rest using the built-in `OpenSslEncryptor`:
+Encrypt sensitive values at rest using the convenient `encrypt()` method:
 
 ```php
 use DynamikDev\Cloak\Encryptors\OpenSslEncryptor;
 
-$key = OpenSslEncryptor::generateKey(); // Generate a secure key
-$encryptor = new OpenSslEncryptor($key);
-
 $cloak = Cloak::make()
-    ->withEncryptor($encryptor);
+    ->encrypt(OpenSslEncryptor::generateKey());
 
 $cloaked = $cloak->cloak('Secret: john@example.com', [Detector::email()]);
 // Values are encrypted in storage, but placeholders remain the same
@@ -255,10 +285,20 @@ $cloaked = $cloak->cloak('Secret: john@example.com', [Detector::email()]);
 
 ```php
 // Reads from CLOAK_PRIVATE_KEY environment variable
-$encryptor = new OpenSslEncryptor();
+$cloak = Cloak::make()->encrypt();
 
 // Or specify a custom environment variable
 $encryptor = new OpenSslEncryptor(null, 'MY_ENCRYPTION_KEY');
+$cloak = Cloak::make()->withEncryptor($encryptor);
+```
+
+**Custom Encryptors:**
+
+For full control, use `withEncryptor()` with a custom implementation:
+
+```php
+$customEncryptor = new MyEncryptor($key);
+$cloak = Cloak::make()->withEncryptor($customEncryptor);
 ```
 
 ## Storage
@@ -287,11 +327,14 @@ use DynamikDev\Cloak\Contracts\StoreInterface;
 
 class RedisStore implements StoreInterface
 {
-    public function __construct(private Redis $redis) {}
+    public function __construct(
+        private Redis $redis,
+        private int $ttl = 3600
+    ) {}
 
-    public function put(string $key, array $map, int $ttl = 3600): void
+    public function put(string $key, array $map): void
     {
-        $this->redis->setex($key, $ttl, json_encode($map));
+        $this->redis->setex($key, $this->ttl, json_encode($map));
     }
 
     public function get(string $key): ?array
@@ -306,7 +349,8 @@ class RedisStore implements StoreInterface
     }
 }
 
-$cloak = Cloak::using(new RedisStore($redis));
+// Configure TTL via constructor
+$cloak = Cloak::using(new RedisStore($redis, ttl: 7200));
 ```
 
 ### Laravel Cache Store Example
@@ -317,9 +361,11 @@ use Illuminate\Support\Facades\Cache;
 
 class LaravelCacheStore implements StoreInterface
 {
-    public function put(string $key, array $map, int $ttl = 3600): void
+    public function __construct(private int $ttl = 3600) {}
+
+    public function put(string $key, array $map): void
     {
-        Cache::put($key, $map, $ttl);
+        Cache::put($key, $map, $this->ttl);
     }
 
     public function get(string $key): ?array
@@ -446,10 +492,10 @@ Cloak::using(StoreInterface $store): self
 
 ```php
 ->withDetectors(array $detectors): self
-->withTtl(int $ttl): self
 ->filter(callable $callback): self
 ->withPlaceholderGenerator(PlaceholderGeneratorInterface $generator): self
 ->withEncryptor(EncryptorInterface $encryptor): self
+->encrypt(?string $key = null): self  // Convenience method for OpenSslEncryptor
 ```
 
 ### Lifecycle Callbacks

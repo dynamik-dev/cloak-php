@@ -26,19 +26,10 @@ it('uses default detectors when set via withDetectors', function () {
     expect($result)->toContain('123-45-6789');
 });
 
-it('can chain withTtl method', function () {
-    $store = new ArrayStore();
-    $cloak = Cloak::using($store)
-        ->withTtl(7200);
-
-    expect($cloak)->toBeInstanceOf(Cloak::class);
-});
-
 it('can chain multiple builder methods', function () {
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
         ->withDetectors([Detector::email()])
-        ->withTtl(7200)
         ->filter(fn ($d) => strlen($d['match']) > 5);
 
     expect($cloak)->toBeInstanceOf(Cloak::class);

@@ -11,6 +11,7 @@ use DynamikDev\Cloak\Contracts\EncryptorInterface;
 use DynamikDev\Cloak\Contracts\PlaceholderGeneratorInterface;
 use DynamikDev\Cloak\Contracts\StoreInterface;
 use DynamikDev\Cloak\Encryptors\NullEncryptor;
+use DynamikDev\Cloak\Encryptors\OpenSslEncryptor;
 use DynamikDev\Cloak\PlaceholderGenerators\DefaultPlaceholderGenerator;
 
 /**
@@ -85,6 +86,13 @@ class Cloak
         return $this;
     }
 
+    public function encrypt(?string $key = null): self
+    {
+        $this->encryptor = new OpenSslEncryptor($key);
+
+        return $this;
+    }
+
     /**
      * @param array<int, DetectorInterface>|null $detectors
      */
@@ -106,7 +114,7 @@ class Cloak
         $key = $result['key'];
         $map = $result['map'];
 
-        $this->store->put('cloak:' . $key, $this->encryptMap($map), $this->ttl);
+        $this->store->put('cloak:' . $key, $this->encryptMap($map));
 
         $cloaked = $this->placeholderGenerator->replace($processedText, $map);
 

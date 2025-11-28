@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace DynamikDev\Cloak;
 
-use DynamikDev\Cloak\Contracts\DetectorInterface;
+use DynamikDev\Cloak\Detectors\Callback;
 use DynamikDev\Cloak\Detectors\CreditCard;
 use DynamikDev\Cloak\Detectors\Email;
+use DynamikDev\Cloak\Detectors\Pattern;
 use DynamikDev\Cloak\Detectors\Phone;
 use DynamikDev\Cloak\Detectors\SSN;
+use DynamikDev\Cloak\Detectors\Words;
 
 /**
  * Factory class for creating detector instances.
@@ -40,7 +42,7 @@ class Detector
     }
 
     /**
-     * @return array<int, DetectorInterface>
+     * @return array<int, Email|Phone|SSN|CreditCard>
      */
     public static function all(): array
     {
@@ -52,88 +54,24 @@ class Detector
         ];
     }
 
-    public static function pattern(string $regex, string $type): DetectorInterface
+    public static function pattern(string $regex, string $type): Pattern
     {
-        return new class ($regex, $type) implements DetectorInterface {
-            public function __construct(
-                private readonly string $regex,
-                private readonly string $type
-            ) {
-            }
-
-            /**
-             * @return array<int, array{match: string, type: string}>
-             */
-            public function detect(string $text): array
-            {
-                preg_match_all($this->regex, $text, $matches);
-
-                return array_map(
-                    fn (string $match): array => ['match' => $match, 'type' => $this->type],
-                    $matches[0]
-                );
-            }
-        };
+        return new Pattern($regex, $type);
     }
 
     /**
      * @param array<int, string> $words
      */
-    public static function words(array $words, string $type): DetectorInterface
+    public static function words(array $words, string $type): Words
     {
-        return new class ($words, $type) implements DetectorInterface {
-            /**
-             * @param array<int, string> $words
-             */
-            public function __construct(
-                private readonly array $words,
-                private readonly string $type
-            ) {
-            }
-
-            /**
-             * @return array<int, array{match: string, type: string}>
-             */
-            public function detect(string $text): array
-            {
-                $matches = [];
-                $lowerText = strtolower($text);
-
-                foreach ($this->words as $word) {
-                    if (($pos = strpos($lowerText, strtolower($word))) !== false) {
-                        $matches[] = [
-                            'match' => substr($text, $pos, strlen($word)),
-                            'type' => $this->type,
-                        ];
-                    }
-                }
-
-                return $matches;
-            }
-        };
+        return new Words($words, $type);
     }
 
     /**
      * @param callable(string): array<int, array{match: string, type: string}> $callback
      */
-    public static function using(callable $callback): DetectorInterface
+    public static function using(callable $callback): Callback
     {
-        return new class ($callback) implements DetectorInterface {
-            /**
-             * @param callable(string): array<int, array{match: string, type: string}> $callback
-             */
-            public function __construct(
-                private readonly mixed $callback
-            ) {
-            }
-
-            /**
-             * @return array<int, array{match: string, type: string}>
-             */
-            public function detect(string $text): array
-            {
-                return ($this->callback)($text);
-            }
-        };
+        return new Callback($callback);
     }
 }
