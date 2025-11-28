@@ -166,7 +166,6 @@ it('combines builder methods with callbacks', function () {
 
     $cloak = Cloak::using($store)
         ->withDetectors([Detector::email()])
-        ->withTtl(7200)
         ->filter(fn ($d) => !str_ends_with($d['match'], '.local'))
         ->beforeCloak(function ($text) use (&$log) {
             $log[] = 'before';

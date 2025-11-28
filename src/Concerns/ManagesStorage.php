@@ -11,15 +11,6 @@ trait ManagesStorage
 {
     protected static ?StoreInterface $defaultStore = null;
 
-    protected int $ttl = 3600;
-
-    public function withTtl(int $ttl): self
-    {
-        $this->ttl = $ttl;
-
-        return $this;
-    }
-
     protected static function getDefaultStore(): StoreInterface
     {
         if (self::$defaultStore === null) {

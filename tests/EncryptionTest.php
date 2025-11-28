@@ -26,11 +26,11 @@ it('uses NullEncryptor by default', function () {
     expect($stored[$cloaked])->toBe('test@example.com');
 });
 
-it('encrypts values when withEncryptor() is called', function () {
+it('encrypts values when encrypt() is called', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $cloaked = $cloak->cloak('test@example.com', [Detector::email()]);
     preg_match('/\{\{EMAIL_([a-zA-Z0-9]{6})_1\}\}/', $cloaked, $matches);
@@ -46,7 +46,7 @@ it('decrypts values correctly on uncloak', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $original = 'Contact: test@example.com Phone: 555-123-4567';
     $cloaked = $cloak->cloak($original, [Detector::email(), Detector::phone()]);
@@ -89,7 +89,7 @@ it('encrypts multiple values independently', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $original = 'Email: test@example.com, Phone: 555-123-4567, SSN: 123-45-6789';
     $cloaked = $cloak->cloak($original, [
@@ -106,7 +106,7 @@ it('handles same value appearing multiple times with encryption', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $original = 'test@example.com and test@example.com';
     $cloaked = $cloak->cloak($original, [Detector::email()]);
@@ -123,7 +123,7 @@ it('combines encryption with filters', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey))
+        ->encrypt($encryptionKey)
         ->filter(fn ($d) => !str_ends_with($d['match'], '.local'));
 
     $text = 'prod@company.com test@test.local';
@@ -144,7 +144,7 @@ it('combines encryption with lifecycle callbacks', function () {
     $log = [];
 
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey))
+        ->encrypt($encryptionKey)
         ->beforeCloak(function ($text) use (&$log) {
             $log[] = 'before';
 
@@ -167,19 +167,18 @@ it('cannot decrypt with wrong key', function () {
     $key2 = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
 
-    $cloak1 = Cloak::using($store)->withEncryptor(new OpenSslEncryptor($key1));
+    $cloak1 = Cloak::using($store)->encrypt($key1);
     $cloaked = $cloak1->cloak('test@example.com', [Detector::email()]);
 
-    $cloak2 = Cloak::using($store)->withEncryptor(new OpenSslEncryptor($key2));
+    $cloak2 = Cloak::using($store)->encrypt($key2);
     $cloak2->uncloak($cloaked);
 })->throws(RuntimeException::class);
 
-it('handles encryption with withTtl()', function () {
+it('handles encryption with builder methods', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withTtl(7200)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $original = 'test@example.com';
     $cloaked = $cloak->cloak($original, [Detector::email()]);
@@ -193,7 +192,7 @@ it('handles encryption with withDetectors()', function () {
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
         ->withDetectors([Detector::email()])
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $text = 'Email: test@example.com Phone: 555-123-4567';
     $cloaked = $cloak->cloak($text);
@@ -210,8 +209,8 @@ it('switching encryptors replaces the encryptor', function () {
     $store = new ArrayStore();
 
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($key1))
-        ->withEncryptor(new OpenSslEncryptor($key2));
+        ->encrypt($key1)
+        ->encrypt($key2);
 
     $original = 'test@example.com';
     $cloaked = $cloak->cloak($original, [Detector::email()]);
@@ -224,7 +223,7 @@ it('handles empty encryption results', function () {
     $encryptionKey = OpenSslEncryptor::generateKey();
     $store = new ArrayStore();
     $cloak = Cloak::using($store)
-        ->withEncryptor(new OpenSslEncryptor($encryptionKey));
+        ->encrypt($encryptionKey);
 
     $result = $cloak->cloak('No sensitive data here', [Detector::email()]);
 
