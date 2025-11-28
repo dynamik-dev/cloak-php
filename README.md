@@ -1,16 +1,14 @@
 # Cloak
 
+![Cloak PHP Example](cloak-php.png)
+
 A simple, extensible PHP package for redacting sensitive data from strings and revealing them later.
 
 ```php
-use DynamikDev\Cloak\Cloak;
-
-$cloak = Cloak::make();
-
-$cloaked = $cloak->cloak('Email me at john@example.com');
+$cloaked = cloak('Email me at john@example.com');
 // "Email me at {{EMAIL_x7k2m9_1}}"
 
-$original = $cloak->uncloak($cloaked);
+$original = uncloak($cloaked);
 // "Email me at john@example.com"
 ```
 
@@ -27,18 +25,14 @@ composer require dynamik-dev/cloak-php
 
 ## Quick Start
 
-### Basic Usage
+### Using Helper Functions
 
 ```php
-use DynamikDev\Cloak\Cloak;
-
-$cloak = Cloak::make();
-
 $text = 'Contact: john@example.com, Phone: 555-123-4567';
-$cloaked = $cloak->cloak($text);
+$cloaked = cloak($text);
 // "Contact: {{EMAIL_x7k2m9_1}}, Phone: {{PHONE_x7k2m9_1}}"
 
-$original = $cloak->uncloak($cloaked);
+$original = uncloak($cloaked);
 // "Contact: john@example.com, Phone: 555-123-4567"
 ```
 
@@ -48,14 +42,27 @@ $original = $cloak->uncloak($cloaked);
 use DynamikDev\Cloak\Detector;
 
 // Only detect emails
-$cloaked = $cloak->cloak($text, [Detector::email()]);
+$cloaked = cloak($text, [Detector::email()]);
 
 // Multiple detectors
-$cloaked = $cloak->cloak($text, [
+$cloaked = cloak($text, [
     Detector::email(),
     Detector::phone('US'),
     Detector::ssn(),
 ]);
+```
+
+### Using the Cloak Class
+
+For more control, use the `Cloak` class directly:
+
+```php
+use DynamikDev\Cloak\Cloak;
+
+$cloak = Cloak::make();
+
+$cloaked = $cloak->cloak($text);
+$original = $cloak->uncloak($cloaked);
 ```
 
 ### Configuring with Builder Methods
@@ -67,7 +74,6 @@ use DynamikDev\Cloak\Encryptors\OpenSslEncryptor;
 
 $cloak = Cloak::make()
     ->withDetectors([Detector::email()])
-    ->withTtl(7200)
     ->encrypt(OpenSslEncryptor::generateKey());
 
 $cloaked = $cloak->cloak('Sensitive: john@example.com');
